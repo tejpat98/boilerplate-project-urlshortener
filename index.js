@@ -53,35 +53,61 @@ app.get("/api/shorturl/:short_id?", function (req, res) {
 });
 app.post("/api/shorturl", async function (req, res) {
   const url = req.body.url;
-  const hostname = new URL(req.body.url).hostname;
-  console.log("url: ", url);
+  let urlObj;
+  console.log(url);
+  try {
+    urlObj = new URL(req.body.url);
+  } catch (error) {
+    return res.json({ error: "Could not parse URL" });
+  }
+  console.log("protocol:", urlObj.protocol);
+  if (!(urlObj.protocol === "http:" || urlObj.protocol === "https:")) {
+    //not a URL
+    return res.json({ error: "not valid http url" });
+  }
   //check if url is valid
-  dns.lookup(hostname, (err, address, family) => {
+  dns.lookup(urlObj.hostname, (err, address, family) => {
     console.log("e: ", err, "a: ", address, " f: ", family);
     if (err) {
-      res.json({ error: "invalid url" });
+      return res.json({ error: "invalid url" });
     }
     if (address && family) {
       //truthy --> has value --> was resolved successfully
     }
   });
+  console.log("url: ", url);
 
-  //Save the valid url, will not store duplicates, if already exists it will return stored document
-  let newURL = new URLshortener({ original_url: url });
-  await newURL.save(function (err, data) {
-    if (err) {
-      return console.log(err);
-    }
-    console.log("Add to DB: " + data);
-  });
-
+  //check to see if its already saved in the DB
   await URLshortener.findOne({ original_url: url }, function (err, data) {
     if (err) {
       return console.log(err);
     }
-    //recreate the json doc with _id as short_url
-    res.json({ original_url: data.original_url, short_url: data._id });
+    if (data) {
+      return res.json({ original_url: data.original_url, short_url: data._id });
+    }
+    if (!data) {
+      //Valid inputted URL not found in DB --> save it, and return to client
+      let newURL = new URLshortener({ original_url: url });
+      newURL.save(function (err, data) {
+        if (err) {
+          return console.log(err);
+        }
+        console.log("Add to DB: " + data);
+        return res.json({
+          original_url: data.original_url,
+          short_url: data._id,
+        });
+      });
+    }
   });
+
+  // await URLshortener.findOne({ original_url: url }, function (err, data) {
+  //   if (err) {
+  //     return console.log(err);
+  //   }
+  //   //recreate the json doc with _id as short_url
+  //   res.json({ original_url: data.original_url, short_url: data._id });
+  // });
 });
 app.listen(port, function () {
   console.log(`Listening on port ${port}`);
